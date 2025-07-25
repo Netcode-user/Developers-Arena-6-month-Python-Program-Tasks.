@@ -1,0 +1,141 @@
+//models.py
+
+from django.db import models
+
+class Book(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.CharField(max_length=100)
+    isbn = models.CharField(max_length=13)
+    added_on = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+//forms.py
+
+from django import forms
+from .models import Book
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+
+class BookForm(forms.ModelForm):
+    class Meta:
+        model = Book
+        fields = '__all__'
+
+class RegisterForm(UserCreationForm):
+    email = forms.EmailField(required=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password1', 'password2']
+//views.py
+
+from django.shortcuts import render, redirect
+from .models import Book
+from .forms import BookForm, RegisterForm
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
+
+def register(request):
+    if request.method == 'POST':
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('login')
+    else:
+        form = RegisterForm()
+    return render(request, 'registration/register.html', {'form': form})
+
+@login_required
+def book_list(request):
+    books = Book.objects.all()
+    return render(request, 'books/book_list.html', {'books': books})
+
+@login_required
+def add_book(request):
+    form = BookForm(request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect('book_list')
+    return render(request, 'books/book_form.html', {'form': form})
+
+@login_required
+def update_book(request, pk):
+    book = Book.objects.get(id=pk)
+    form = BookForm(request.POST or None, instance=book)
+    if form.is_valid():
+        form.save()
+        return redirect('book_list')
+    return render(request, 'books/book_form.html', {'form': form})
+
+@login_required
+def delete_book(request, pk):
+    book = Book.objects.get(id=pk)
+    if request.method == 'POST':
+        book.delete()
+        return redirect('book_list')
+    return render(request, 'books/book_confirm_delete.html', {'book': book})
+
+//urls.py
+
+from django.contrib import admin
+from django.urls import path, include
+from books.views import register
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('accounts/', include('django.contrib.auth.urls')),
+    path('accounts/register/', register, name='register'),
+    path('', include('books.urls')),
+]
+
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.book_list, name='book_list'),
+    path('add/', views.add_book, name='add_book'),
+    path('update/<int:pk>/', views.update_book, name='update_book'),
+    path('delete/<int:pk>/', views.delete_book, name='delete_book'),
+]
+
+//base.html
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Library</title>
+</head>
+<body>
+    {% if user.is_authenticated %}
+        Logged in as {{ user.username }} | <a href="{% url 'logout' %}">Logout</a>
+    {% else %}
+        <a href="{% url 'login' %}">Login</a> | <a href="{% url 'register' %}">Register</a>
+    {% endif %}
+    <hr>
+    {% block content %}{% endblock %}
+</body>
+</html>
+
+//books_list.html
+
+{% extends 'base.html' %}
+{% block content %}
+<h2>Library Books</h2>
+<a href="{% url 'add_book' %}">+ Add Book</a>
+<ul>
+    {% for book in books %}
+    <li>{{ book.title }} by {{ book.author }} [<a href="{% url 'update_book' book.id %}">Edit</a>] [<a href="{% url 'delete_book' book.id %}">Delete</a>]</li>
+    {% endfor %}
+</ul>
+{% endblock %}
+
+//settings.py
+
+ALLOWED_HOSTS = ['*']
+
+import dj_database_url
+DATABASES['default'] = dj_database_url.config(conn_max_age=600, ssl_require=True)
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
